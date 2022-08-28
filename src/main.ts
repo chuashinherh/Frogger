@@ -35,8 +35,8 @@ function main() {
   type Event = 'keydown' | 'keyup'
 
   class Tick {constructor(public readonly elapsed: number) {} }
-  class Move {constructor(public readonly x: number, public readonly y: number) {}}
-  class CreateCar {constructor(public readonly row_no: number) {}}
+  class Move {constructor(public readonly x: number, public readonly y: number, public readonly addScore: boolean) {}}
+  class CreateCar {constructor(public readonly row_no: number, public readonly direction: number, public readonly speed: number) {}}
 
   type Action = Tick | Move | CreateCar
 
@@ -52,18 +52,30 @@ function main() {
     x: number, y: number
   }
 
-  type Body = Readonly<{
+  type Body = Frog | Car
+
+  type Frog = Readonly<{
     id: string,
     pos: Pos,
     createTime: number,
     radius: number
   }>
 
+  type Car = Readonly<{
+    id: string,
+    pos: Pos,
+    createTime: number,
+    radius: number,
+    direction: number,
+    speed: number
+  }>
+
   type State = Readonly<{
     time: number,
     frog: Body
-    cars: ReadonlyArray<Body>
+    cars: ReadonlyArray<Car>
     objCount: number
+    score: number
     gameOver: boolean
   }>
 
@@ -72,10 +84,11 @@ function main() {
     frog: createFrog(),
     cars: [],
     objCount: 0,
+    score: 0,
     gameOver: false
   }
 
-  function createFrog(): Body {
+  function createFrog(): Frog {
     return {
       id: 'frog',
       pos: {x: 300, y: 580},
@@ -84,23 +97,25 @@ function main() {
     }
   }
 
-  function createCar(s: State, row_number: number): Body {
+  function createCar(s: State, row_number: number, direction: number, speed: number): Car {
     return {
       id: `car${s.objCount}`,
-      pos: {x: 600, y: 290 + row_number * 40},
+      pos: {x: 600 * direction, y: 290 + row_number * 40},
       createTime: s.time,
-      radius: 10
+      radius: 10,
+      direction: direction,
+      speed: speed
     }
   }
 
-  const moveObj = (o: Body) => <Body>{...o,
-    pos: {x: wrap(o.pos.x - 1), y: o.pos.y}
+  const moveObj = (o: Car, direction: number, speed: number) => <Car>{...o,
+    pos: {x: direction === 1 ? wrap(o.pos.x - speed) : wrap(o.pos.x + speed), y: o.pos.y}
   }
 
   const tick = (s: State, elapsed: number) => {
     return handleCollisions({...s,
       time: elapsed,
-      cars: s.cars.map(moveObj)
+      cars: s.cars.map(e => moveObj(e, e.direction, e.speed))
     })
   }
 
@@ -117,33 +132,38 @@ function main() {
     }
   }
 
-  const randNoOfCars = () => Math.floor(Math.random() * 3) + 1
+  const randNoOfCars = () => Math.floor(Math.random() * 2) + 2
   const randInterval = () => Math.floor(Math.random() * 1500) + 500
   const randSpeed = () => Math.floor(Math.random() * 3) + 1
   const randDirection = () => Math.floor(Math.random() * 2)
 
-  //const row = range(1, 6).pipe(map(e => interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(e)))))
+  function recursion(n: number): Observable<CreateCar>[] {
+    if (n === 7) {
+      return []
+    }
+    const rowDir = randDirection()
+    const rowSpeed = randSpeed()
+    return [interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(n, rowDir, rowSpeed)))].concat(recursion(n+1))
+  }
 
-  const row1 = interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(1)))
-  const row2 = interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(2)))
-  const row3 = interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(3)))
-  const row4 = interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(4)))
-  const row5 = interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(5)))
-  const row6 = interval(randInterval()).pipe(take(randNoOfCars()), map(_ => new CreateCar(6)))
+  const [row1, row2, row3, row4, row5, row6] = recursion(1)
 
   const wrap = (x: number) => x < 0 ? x + 600 : x > 600 ? x - 600 : x
 
   const reduceState = (s: State, e: Action) => 
       e instanceof Move ? {...s,
-        frog: {...s.frog, pos: {x: wrap(s.frog.pos.x + e.x), y: s.frog.pos.y + e.y}}
+        frog: {...s.frog, pos: {x: wrap(s.frog.pos.x + e.x), y: s.frog.pos.y + e.y}},
+        score: e.addScore ? s.score + 10 : s.score
       } : 
       e instanceof CreateCar ? {...s,
-          cars: s.cars.concat([createCar(s, e.row_no)]),
+          cars: s.cars.concat([createCar(s, e.row_no, e.direction, e.speed)]),
           objCount: s.objCount + 1
       } :
       tick(s, e.elapsed)
 
   function updateView(state: State): void {
+    const score = document.getElementById("score")!
+    score.innerHTML = String(state.score)
     frog.setAttribute("cx", String(state.frog.pos.x))
     frog.setAttribute("cy", String(state.frog.pos.y))
     state.cars.forEach(c => {
@@ -170,18 +190,18 @@ function main() {
     map(
       ({key}) => {
         if (key === "w") {
-          return new Move(0, -40)
+          return new Move(0, -40, true)
         }
         else if (key === "a") {
-          return new Move(-40, 0)
+          return new Move(-40, 0, false)
         }
         else if (key === "s") {
-          return new Move(0, 40)
+          return new Move(0, 40, false)
         }
         else if (key === "d") {
-          return new Move(40, 0)
+          return new Move(40, 0, false)
         }
-        return new Move(0, 0)
+        return new Move(0, 0, false)
       }
     )
   )
