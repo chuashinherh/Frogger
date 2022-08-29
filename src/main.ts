@@ -39,6 +39,7 @@ function main() {
   class CreateCar {constructor(public readonly row_no: number, public readonly direction: number, public readonly speed: number) {}}
   class CreatePlank {constructor(public readonly row_no: number, public readonly direction: number, public readonly speed: number, public readonly radiusX: number, 
     public readonly radiusY: number) {}}
+  class CreateTarget {constructor(public readonly n: number) {}}
 
   type Action = Tick | Move | CreateCar | CreatePlank
 
@@ -82,6 +83,13 @@ function main() {
     speed: number
   }>
 
+  type Target = Readonly<{
+    id: string,
+    pos: Pos,
+    createTime: number,
+    radius: number,
+  }>
+
   type River = Readonly<{
     id: string,
     pos: Pos,
@@ -95,11 +103,13 @@ function main() {
     frog: Frog,
     cars: ReadonlyArray<Car>,
     planks: ReadonlyArray<Plank>,
+    targets: ReadonlyArray<Target>
     river: River,
     carCount: number,
     plankCount: number,
     score: number,
-    frogOnPlank: Plank[],
+    frogOnPlank: ReadonlyArray<Plank>,
+    hasFrogTarget: ReadonlyArray<Target>,
     gameOver: boolean
   }>
 
@@ -108,11 +118,13 @@ function main() {
     frog: createFrog(),
     cars: [],
     planks: [],
+    targets: [],
     river: createRiver(),
     carCount: 0,
     plankCount: 0,
     score: 0,
     frogOnPlank: [],
+    hasFrogTarget: [],
     gameOver: false
   }
 
@@ -160,22 +172,31 @@ function main() {
     }
   }
 
+  function createTarget(n: number): Target {
+    return {
+      id: `target${n+1}`,
+      pos: {x: 120 * n + 40, y: 0},
+      createTime: 0,
+      radius: 20
+    }
+  }
+
   const moveCar = (o: Car, direction: number, speed: number) => <Car>{...o,
     pos: {x: direction === 1 ? wrap(o.pos.x - speed, o.radius) : wrap(o.pos.x + speed, o.radius), y: o.pos.y}
   }
 
   const movePlank = (o: Plank, direction: number, speed: number) => <Plank>{...o,
-    pos: {x: direction === 1 ? wrap(o.pos.x - speed, o.radiusX) : wrap(o.pos.x + speed, o.radiusX), y: o.pos.y}
+    pos: {x: direction === 1 ? wrapPlank(o.pos.x - speed, o.radiusX) : wrapPlank(o.pos.x + speed, o.radiusX), y: o.pos.y}
   }
 
   const moveFrog = (o: Frog, p: Plank, direction: number, speed: number) => <Frog>{...o,
-    pos: {x: direction === 1 ? wrapFrogOnPlank(o.pos.x - speed, p.pos.x, o.radius, p.radiusX) : wrapFrogOnPlank(o.pos.x + speed, p.pos.x, o.radius, p.radiusX), y: o.pos.y}
+    pos: {x: direction === 1 ? o.pos.x - speed : o.pos.x + speed, y: o.pos.y}
   }
 
   const wrap = (x: number, radius: number) => x + radius < 0 ? x + 600 : x + radius > 600 ? x - 600 : x
 
-  const wrapFrogOnPlank = (xFrog: number, xPlank: number, radiusFrog: number, radiusPlank: number) => 
-      xPlank + radiusPlank < 0 || xFrog + radiusFrog < 0 ? xFrog + 600 : xPlank + radiusPlank > 600 || xFrog + radiusFrog > 600 ? xFrog - 600 : xFrog
+  const wrapPlank = (xPlank: number, radiusPlank: number) => 
+      xPlank + (radiusPlank * 2) < 0 ? xPlank + 600 : xPlank > 600 ? xPlank - 600 : xPlank
 
   const tick = (s: State, elapsed: number) => {
     return handleCollisions({...s,
@@ -187,22 +208,27 @@ function main() {
   }
 
   const handleCollisions = (s: State) => {
-    const bodiesCollided = ([frog, obj]: [Frog, Car]) => {
+    const bodiesCollided = ([frog, obj]: [Frog, Car | Target]) => {
       return Math.abs(frog.pos.x - (obj.pos.x + obj.radius)) < frog.radius + obj.radius
           && Math.abs(frog.pos.y - (obj.pos.y + obj.radius)) < frog.radius + obj.radius
     }
-    const bodiesCollidedPlank = ([frog, obj]: [Frog, Plank | River]) => {
+    const bodiesCollidedPlankOrRiver = ([frog, obj]: [Frog, Plank | River]) => {
       return Math.abs(frog.pos.x - (obj.pos.x + obj.radiusX)) < frog.radius + obj.radiusX
           && Math.abs(frog.pos.y - (obj.pos.y + obj.radiusY)) < frog.radius + obj.radiusY
     }
     const frogCollideCar = s.cars.filter(r => bodiesCollided([s.frog, r])).length > 0
-    const frogCollidePlank = s.planks.filter(r => bodiesCollidedPlank([s.frog, r]))
-    const frogCollideRiver = frogCollidePlank.length > 0 ? false : bodiesCollidedPlank([s.frog, s.river])
+    const frogCollidePlank = s.planks.filter(r => bodiesCollidedPlankOrRiver([s.frog, r]))
+    const frogCollideRiver = frogCollidePlank.length > 0 ? false : bodiesCollidedPlankOrRiver([s.frog, s.river])
+    const frogOutOfBounds = s.frog.pos.x - s.frog.radius > 600 || s.frog.pos.x + s.frog.radius < 0
+    const hasFrogTarget = s.targets.filter(r => bodiesCollided([s.frog, r]))
 
     return <State> {
       ...s,
+      frog: hasFrogTarget.length > 0 ? createFrog(): s.frog,
+      score: hasFrogTarget.length > 0 ? s.score + 40 : s.score,
+      hasFrogTarget: hasFrogTarget,
       frogOnPlank: frogCollidePlank,
-      gameOver: frogCollideCar || frogCollideRiver
+      gameOver: frogCollideCar || frogCollideRiver || frogOutOfBounds
     }
   }
 
@@ -231,14 +257,31 @@ function main() {
     const rowDirPlank = randDirection()
     const rowSpeedPlank = randSpeed()
     const rowRadiusPlank = randRadius()
-    return [interval(randIntervalPlank()).pipe(take(randNoOfCars()), map(_ => new CreatePlank(n, rowDirPlank, rowSpeedPlank, rowRadiusPlank, 10)))].concat(recursionPlank(n+1))
+    return [interval(1000).pipe(take(randNoOfCars()), map(_ => new CreatePlank(n, rowDirPlank, 1, rowRadiusPlank, 10)))].concat(recursionPlank(n+1))
   }
 
   const [row1Plank, row2Plank, row3Plank, row4Plank, row5Plank, row6Plank] = recursionPlank(1)
 
+  function addTarget(n: number): Observable<CreateTarget>[] {
+    if (n === 5) {
+      return []
+    }
+    const target = document.createElementNS(svg.namespaceURI, "rect")
+    Object.entries({
+      x: 120 * n + 40,
+      y: 0,
+      width: 40,
+      height: 40,
+      fill: "black",
+    }).forEach(([key, val]) => target.setAttribute(key, String(val)));
+    svg.appendChild(target);
+    return [range(1,1).pipe(map(_ => new CreateTarget(n)))].concat(addTarget(n+1))
+  }
+  const [target1, target2, target3, target4, target5] = addTarget(0)
+
   const reduceState = (s: State, e: Action) => 
       e instanceof Move ? {...s,
-        frog: {...s.frog, pos: {x: wrap(s.frog.pos.x + e.x, s.frog.radius), y: s.frog.pos.y + e.y}},
+        frog: {...s.frog, pos: {x: s.frog.pos.x + e.x, y: s.frog.pos.y + e.y}},
         score: e.addScore ? s.score + 10 : s.score
       } : 
       e instanceof CreateCar ? {...s,
@@ -249,13 +292,30 @@ function main() {
         planks: s.planks.concat([createPlank(s, e.row_no, e.direction, e.speed, e.radiusX, 10)]),
         plankCount: s.plankCount + 1
       } :
+      e instanceof CreateTarget ? {...s,
+        targets: s.targets.concat([createTarget(e.n)])
+      } :
       tick(s, e.elapsed)
 
   function updateView(state: State): void {
     const score = document.getElementById("score")!
     score.innerHTML = String(state.score)
-    frog.setAttribute("cx", String(state.frog.pos.x))
-    frog.setAttribute("cy", String(state.frog.pos.y))
+    if (state.hasFrogTarget.length > 0) {
+      const frogAtTarget = document.createElementNS(svg.namespaceURI, "circle")
+      Object.entries({
+        cx: state.hasFrogTarget[0].pos.x + state.hasFrogTarget[0].radius,
+        cy: state.hasFrogTarget[0].pos.y + state.hasFrogTarget[0].radius,
+        r: 10,
+        fill: "white",
+      }).forEach(([key, val]) => frogAtTarget.setAttribute(key, String(val)));
+      svg.appendChild(frogAtTarget);
+      frog.setAttribute("cx", String(300))
+      frog.setAttribute("cy", String(580))
+    }
+    else {
+      frog.setAttribute("cx", String(state.frog.pos.x))
+      frog.setAttribute("cy", String(state.frog.pos.y))
+    }
     svg.appendChild(frog)
     state.cars.forEach(c => {
         const createCarView = () => {
@@ -313,8 +373,10 @@ function main() {
   )
 
   const merger: Observable<Action> = merge(
-    gameClock, controlFrog, row1Car, row2Car, row3Car, row4Car, row5Car, row6Car,
-    row1Plank, row2Plank, row3Plank, row4Plank, row5Plank, row6Plank
+    gameClock, controlFrog, 
+    row1Car, row2Car, row3Car, row4Car, row5Car, row6Car,
+    row1Plank, row2Plank, row3Plank, row4Plank, row5Plank, row6Plank,
+    target1, target2, target3, target4, target5
   )
   
   const subscription = merger.pipe(
