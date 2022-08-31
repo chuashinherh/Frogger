@@ -36,13 +36,12 @@ function main() {
 
   class Tick {constructor(public readonly elapsed: number) {} }
   class Move {constructor(public readonly x: number, public readonly y: number, public readonly addScore: boolean) {}}
-  class CreateCar {constructor(public readonly row_no: number, public readonly direction: number, public readonly speed: number) {}}
+  class CreateCar {constructor(public readonly row_no: number, public readonly direction: number) {}}
   class CreatePlank {constructor(public readonly row_no: number, public readonly direction: number, public readonly speed: number, public readonly radiusX: number, 
     public readonly radiusY: number) {}}
   class CreateTarget {constructor(public readonly n: number) {}}
-  class ResetState {constructor() {}}
 
-  type Action = Tick | Move | CreateCar | CreatePlank | ResetState
+  type Action = Tick | Move | CreateCar | CreatePlank
 
   const gameClock = interval(10).pipe(map(elapsed => new Tick(elapsed)))
   // const keyObservable = <T>(eventName: Event, k: Key, result: () => T) => 
@@ -110,6 +109,11 @@ function main() {
     plankCount: number,
     score: number,
     highscore: number,
+    level: number,
+    multiplier: number,
+    carSpeed: ReadonlyArray<number>,
+    carNum: ReadonlyArray<number>,
+    plankNum: ReadonlyArray<number>,
     frogOnPlank: ReadonlyArray<Plank>,
     hasFrogTarget: ReadonlyArray<Target>,
     frogInTargetCount: number,
@@ -128,6 +132,11 @@ function main() {
     plankCount: 0,
     score: 0,
     highscore: 0,
+    level: 1,
+    multiplier: 1.05,
+    carSpeed: [1, 1, 1.3, 1, 1, 1],
+    carNum: [2, 2, 1, 3, 3, 2],
+    plankNum: [3, 3, 0, 2, 3, 0],
     frogOnPlank: [],
     hasFrogTarget: [],
     frogInTargetCount: 0,
@@ -146,6 +155,10 @@ function main() {
         carCount: 0,
         plankCount: 0,
         score: 0,
+        level: 1,
+        carSpeed: [1, 1, 1, 1, 1, 1],
+        carNum: [2, 2, 1, 3, 3, 2],
+        plankNum: [3, 3, 0, 2, 3, 0],
         frogOnPlank: [],
         hasFrogTarget: [],
         frogInTargetCount: 0,
@@ -153,9 +166,28 @@ function main() {
         gameOver: false
       }
     }
+    else if (s.passedLevel) {
+      return {...s,
+        frog: createFrog(),
+        cars: [],
+        planks: [],
+        targets: [],
+        carCount: 0,
+        plankCount: 0,
+        level: s.level + 1,
+        carSpeed: [s.carSpeed[0]*s.multiplier, s.carSpeed[1]*s.multiplier, 
+                    s.carSpeed[2]*s.multiplier, s.carSpeed[3]*s.multiplier, 
+                    s.carSpeed[4]*s.multiplier, s.carSpeed[5]*s.multiplier],
+        carNum: s.level === 5 ? [2+1, 2+1, 1+1, 3+1, 3+1, 2+1] : [2, 2, 1, 3, 3, 2],
+        plankNum: s.level === 5 ? [3, 3, 0, 2-1, 3, 0] : [3, 3, 0, 2, 3, 0],
+        frogOnPlank: [],
+        hasFrogTarget: [],
+        frogInTargetCount: 0,
+        passedLevel: false,
+      }
+    }
     return s
   }
-  const setState = interval(10).pipe(map(_ => new ResetState()))
 
   function createRiver(): River {
     return {
@@ -176,7 +208,7 @@ function main() {
     }
   }
 
-  function createCar(s: State, row_number: number, direction: number, speed: number): Car {
+  function createCar(s: State, row_number: number, direction: number): Car {
     return {
       id: `car${s.carCount}`,
       pos: {x: !direction ? 600 * direction : 600 * direction - 20, 
@@ -184,7 +216,7 @@ function main() {
       createTime: s.time,
       radius: 10,
       direction: direction,
-      speed: speed
+      speed: s.carSpeed[row_number-1] * s.multiplier
     }
   }
 
@@ -225,7 +257,7 @@ function main() {
   const wrap = (x: number, radius: number) => x + radius < 0 ? x + 600 : x + radius > 600 ? x - 600 : x
 
   const wrapPlank = (xPlank: number, radiusPlank: number) => 
-      xPlank + (radiusPlank * 2) < 0 ? xPlank + 600 : xPlank > 600 ? xPlank - 600 : xPlank
+      xPlank + (radiusPlank * 2) < 0 ? xPlank + 600 + radiusPlank : xPlank > 600 ? xPlank - 600 - radiusPlank : xPlank
 
   const tick = (s: State, elapsed: number) => {
     return handleCollisions({...s,
@@ -260,39 +292,10 @@ function main() {
       frogOnPlank: frogCollidePlank,
       frogInTargetCount: hasFrogTarget.length > 0 ? s.frogInTargetCount + 1 : s.frogInTargetCount,
       passedLevel: hasFrogTarget.length > 0 && s.frogInTargetCount + 1 === 5 ? true : false,
-      gameOver: frogCollideCar || frogCollideRiver || frogOutOfBounds
+      gameOver: false
+      //frogCollideCar || frogCollideRiver || frogOutOfBounds
     }
   }
-
-  const randNoOfCars = () => Math.floor(Math.random() * 2) + 2
-  const randIntervalCar = () => Math.floor(Math.random() * 1500) + 500
-  const randIntervalPlank = () => Math.floor(Math.random() * 3000) + 1500
-  const randSpeed = () => Math.floor(Math.random() * 3) + 1
-  const randDirection = () => Math.floor(Math.random() * 2)
-  const randRadius = () => Math.floor(Math.random() * 30) + 50
-
-  function recursionCar(n: number): Observable<CreateCar>[] {
-    if (n === 7) {
-      return []
-    }
-    const rowDirCar = randDirection()
-    const rowSpeedCar = randSpeed()
-    return [interval(randIntervalCar()).pipe(take(randNoOfCars()), map(_ => new CreateCar(n, rowDirCar, 1)))].concat(recursionCar(n+1))
-  }
-
-  const [row1Car, row2Car, row3Car, row4Car, row5Car, row6Car] = recursionCar(1)
-
-  function recursionPlank(n: number): Observable<CreatePlank>[] {
-    if (n === 7) {
-      return []
-    }
-    const rowDirPlank = randDirection()
-    const rowSpeedPlank = randSpeed()
-    const rowRadiusPlank = randRadius()
-    return [interval(1000).pipe(take(4), map(_ => new CreatePlank(n, rowDirPlank, 1, 400, 10)))].concat(recursionPlank(n+1))
-  }
-
-  const [row1Plank, row2Plank, row3Plank, row4Plank, row5Plank, row6Plank] = recursionPlank(1)
 
   function addTarget(n: number): Observable<CreateTarget>[] {
     if (n === 5) {
@@ -318,7 +321,7 @@ function main() {
         highscore: e.addScore && s.score >= s.highscore ? s.highscore + 10 : s.highscore
       } : 
       e instanceof CreateCar ? {...s,
-        cars: s.cars.concat([createCar(s, e.row_no, e.direction, e.speed)]),
+        cars: s.cars.concat([createCar(s, e.row_no, e.direction)]),
         carCount: s.carCount + 1
       } :
       e instanceof CreatePlank ? {...s,
@@ -328,11 +331,10 @@ function main() {
       e instanceof CreateTarget ? {...s,
         targets: s.targets.concat([createTarget(e.n)])
       } :
-      e instanceof ResetState ? resetState(s) :
       tick(s, e.elapsed)
 
   function updateView(state: State): State {
-    console.log(state.highscore)
+    console.log(state.carNum[2])
     const score = document.getElementById("score")!
     score.innerHTML = String(state.score)
     const highscore = document.getElementById("highscore")!
@@ -385,37 +387,44 @@ function main() {
       v.setAttribute("height", "20");
       v.setAttribute("fill", "brown");
     })
+
+    function clearView() {
+      state.cars.forEach(c => {
+        svg.removeChild(document.getElementById(c.id)!)
+      })
+      state.planks.forEach(p => {
+        svg.removeChild(document.getElementById(p.id)!)
+      })
+      function frogRec(n: number) {
+        if (n === 1) {
+          svg.removeChild(document.getElementById(`frg${n}`)!)
+        }
+        else {
+          svg.removeChild(document.getElementById(`frg${n}`)!)
+          frogRec(n-1)
+        }
+      }
+      if (state.frogInTargetCount) {
+        frogRec(state.frogInTargetCount)
+      }
+    }
+    
     if (state.gameOver) {
       const keyDown = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
         map(
           ({key}) => {
             if (key === "r") {
-              state.cars.forEach(c => {
-                svg.removeChild(document.getElementById(c.id)!)
-              })
-              state.planks.forEach(p => {
-                svg.removeChild(document.getElementById(p.id)!)
-              })
-              function frogRec(n: number) {
-                if (n === 1) {
-                  svg.removeChild(document.getElementById(`frg${n}`)!)
-                  svg.removeChild(document.getElementById(`frg${n}`)!)
-                }
-                else {
-                  svg.removeChild(document.getElementById(`frg${n}`)!)
-                  svg.removeChild(document.getElementById(`frg${n}`)!)
-                  frogRec(n-1)
-                }
-              }
-              if (state.frogInTargetCount) {
-                frogRec(state.frogInTargetCount)
-              }
+              clearView()
               keyDown.unsubscribe()
               startGame(resetState(state))
             }
           }
         )
       ).subscribe()
+    }
+    else if (state.passedLevel) {
+      clearView()
+      startGame(resetState(state))
     }
     return state
   }
@@ -440,19 +449,30 @@ function main() {
     )
   )
 
-  function startGame(state: State) {
+  function startGame(s: State) {
+    const row1Car = interval(2000).pipe(take(s.carNum[0]), map(_ => new CreateCar(1, 0)))
+    const row2Car = interval(1800).pipe(take(s.carNum[1]), map(_ => new CreateCar(2, 1)))
+    const row3Car = interval(1000).pipe(take(s.carNum[2]), map(_ => new CreateCar(3, 0)))
+    const row4Car = interval(1500).pipe(take(s.carNum[3]), map(_ => new CreateCar(4, 1)))
+    const row5Car = interval(1500).pipe(take(s.carNum[4]), map(_ => new CreateCar(5, 0)))
+    const row6Car = interval(1500).pipe(take(s.carNum[5]), map(_ => new CreateCar(6, 1)))
+
+    const row1Plank = interval(2200).pipe(take(s.plankNum[0]), map(_ => new CreatePlank(1, 1, 1, 70, 10)))
+    const row2Plank = interval(2100).pipe(take(s.plankNum[1]), map(_ => new CreatePlank(2, 0, 1, 70, 10)))
+    const row4Plank = interval(2500).pipe(take(s.plankNum[3]), map(_ => new CreatePlank(4, 0, 1.5, 130, 10)))
+    const row5Plank = interval(2500).pipe(take(s.plankNum[4]), map(_ => new CreatePlank(5, 0, 0.85, 50, 10)))
+
     const merger: Observable<Action> = merge(
-      setState,
       gameClock, controlFrog,
       row1Car, row2Car, row3Car, row4Car, row5Car, row6Car,
-      row1Plank, row2Plank, row3Plank, row4Plank, row5Plank, row6Plank,
+      row1Plank, row2Plank, row4Plank, row5Plank,
       target1, target2, target3, target4, target5
     )
     
     return merger.pipe(
-      scan(reduceState, state),
+      scan(reduceState, s),
       map(updateView),
-      takeWhile(s => !s.gameOver)
+      takeWhile(s => !s.gameOver && !s.passedLevel)
     ).subscribe()
   }
 
