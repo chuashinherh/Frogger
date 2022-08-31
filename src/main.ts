@@ -292,8 +292,7 @@ function main() {
       frogOnPlank: frogCollidePlank,
       frogInTargetCount: hasFrogTarget.length > 0 ? s.frogInTargetCount + 1 : s.frogInTargetCount,
       passedLevel: hasFrogTarget.length > 0 && s.frogInTargetCount + 1 === 5 ? true : false,
-      gameOver: false
-      //frogCollideCar || frogCollideRiver || frogOutOfBounds
+      gameOver: frogCollideCar || frogCollideRiver || frogOutOfBounds
     }
   }
 
@@ -410,11 +409,27 @@ function main() {
     }
     
     if (state.gameOver) {
+      const gameOverText = document.createElementNS(svg.namespaceURI, "text")!
+      gameOverText.setAttribute("x", "100")
+      gameOverText.setAttribute("y", "300")
+      gameOverText.setAttribute("id", "gameover")
+      gameOverText.textContent = "Game Over"
+      svg.appendChild(gameOverText)
+
+      const restartText = document.createElementNS(svg.namespaceURI, "text")!
+      restartText.setAttribute("x", "140")
+      restartText.setAttribute("y", "350")
+      restartText.setAttribute("id", "restart")
+      restartText.textContent = "Press 'R' to Restart"
+      svg.appendChild(restartText)
+
       const keyDown = fromEvent<KeyboardEvent>(document, 'keydown').pipe(
         map(
           ({key}) => {
             if (key === "r") {
               clearView()
+              svg.removeChild(document.getElementById('gameover')!)
+              svg.removeChild(document.getElementById('restart')!)
               keyDown.unsubscribe()
               startGame(resetState(state))
             }

@@ -22,3 +22,14 @@ p.highlight {
     color: red;
 }
 
+#gameover {
+    font-family: sans-serif;
+    font-size: 80px;
+    fill: red;
+}
+
+#restart {
+    font-family: sans-serif;
+    font-size: 40px;
+    fill: red;
+}
