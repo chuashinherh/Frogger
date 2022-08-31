@@ -255,6 +255,7 @@ function main() {
       ...s,
       frog: hasFrogTarget.length > 0 ? createFrog(): s.frog,
       score: hasFrogTarget.length > 0 ? s.score + 40 : s.score,
+      highscore: hasFrogTarget.length > 0 && s.score >= s.highscore ? s.highscore + 40 : s.highscore,
       hasFrogTarget: hasFrogTarget,
       frogOnPlank: frogCollidePlank,
       frogInTargetCount: hasFrogTarget.length > 0 ? s.frogInTargetCount + 1 : s.frogInTargetCount,
@@ -313,7 +314,8 @@ function main() {
   const reduceState = (s: State, e: Action) => 
       e instanceof Move ? {...s,
         frog: {...s.frog, pos: {x: s.frog.pos.x + e.x, y: s.frog.pos.y + e.y}},
-        score: e.addScore ? s.score + 10 : s.score
+        score: e.addScore ? s.score + 10 : s.score,
+        highscore: e.addScore && s.score >= s.highscore ? s.highscore + 10 : s.highscore
       } : 
       e instanceof CreateCar ? {...s,
         cars: s.cars.concat([createCar(s, e.row_no, e.direction, e.speed)]),
@@ -330,8 +332,11 @@ function main() {
       tick(s, e.elapsed)
 
   function updateView(state: State): State {
+    console.log(state.highscore)
     const score = document.getElementById("score")!
     score.innerHTML = String(state.score)
+    const highscore = document.getElementById("highscore")!
+    highscore.innerHTML = String(state.highscore)
     if (state.hasFrogTarget.length > 0) {
       const frogAtTarget = document.createElementNS(svg.namespaceURI, "circle")
       Object.entries({
@@ -385,7 +390,6 @@ function main() {
         map(
           ({key}) => {
             if (key === "r") {
-              console.log("r")
               state.cars.forEach(c => {
                 svg.removeChild(document.getElementById(c.id)!)
               })
@@ -407,7 +411,7 @@ function main() {
                 frogRec(state.frogInTargetCount)
               }
               keyDown.unsubscribe()
-              startGame()
+              startGame(resetState(state))
             }
           }
         )
@@ -436,7 +440,7 @@ function main() {
     )
   )
 
-  function startGame() {
+  function startGame(state: State) {
     const merger: Observable<Action> = merge(
       setState,
       gameClock, controlFrog,
@@ -446,13 +450,13 @@ function main() {
     )
     
     return merger.pipe(
-      scan(reduceState, initialState),
+      scan(reduceState, state),
       map(updateView),
       takeWhile(s => !s.gameOver)
     ).subscribe()
   }
 
-  startGame()
+  startGame(initialState)
 
 }
 

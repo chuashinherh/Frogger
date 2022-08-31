@@ -160,7 +160,7 @@ function main() {
               (Math.abs(parseInt(String(frog.getAttribute("cy"))) - (parseInt(String(obj.getAttribute("y"))) + (parseInt(String(obj.getAttribute("height"))) / 2))) < parseInt(String(frog.getAttribute("r"))) + (parseInt(String(obj.getAttribute("height"))) / 2))
     }
     const frogCollided = gameState.cars.filter(r => bodiesCollided([frog, r])).length > 0
-    gameState.gameOver = frogCollided
+    //gameState.gameOver = frogCollided
   }
 
   interval(10).subscribe(_ => {
