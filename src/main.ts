@@ -31,31 +31,23 @@ function main() {
   }).forEach(([key, val]) => frog.setAttribute(key, String(val)));
   svg.appendChild(frog);
 
-  type Key = 'w' | 'a' | 's' | 'd'
-  type Event = 'keydown' | 'keyup'
-
   class Tick {constructor(public readonly elapsed: number) {} }
   class Move {constructor(public readonly x: number, public readonly y: number, public readonly addScore: boolean) {}}
   class CreateCar {constructor(public readonly row_no: number, public readonly direction: number) {}}
   class CreatePlank {constructor(public readonly row_no: number, public readonly direction: number, public readonly speed: number, public readonly radiusX: number, 
     public readonly radiusY: number) {}}
   class CreateTarget {constructor(public readonly n: number) {}}
+  class CreateCrocodile {constructor(public readonly row_no: number, public readonly direction: number, public readonly speed: number, public readonly radiusX: number, 
+    public readonly radiusY: number) {}}
+  class CreateLadyFrog {constructor() {}}
 
-  type Action = Tick | Move | CreateCar | CreatePlank
+  type Action = Tick | Move | CreateCar | CreatePlank | CreateCrocodile |CreateLadyFrog
 
   const gameClock = interval(10).pipe(map(elapsed => new Tick(elapsed)))
-  // const keyObservable = <T>(eventName: Event, k: Key, result: () => T) => 
-  //           fromEvent<KeyboardEvent>(document, eventName).pipe(
-  //             filter(({key}) => key === k),
-  //             filter(({repeat})=>!repeat),
-  //             map(result)
-  //           )
 
   type Pos = {
     x: number, y: number
   }
-
-  type Body = Frog | Car | Plank
 
   type Frog = Readonly<{
     id: string,
@@ -83,6 +75,16 @@ function main() {
     speed: number
   }>
 
+  type Crocodile = Readonly<{
+    id: string,
+    pos: Pos,
+    createTime: number,
+    radiusX: number,
+    radiusY: number,
+    direction: number,
+    speed: number
+  }>
+
   type Target = Readonly<{
     id: string,
     pos: Pos,
@@ -101,9 +103,11 @@ function main() {
   type State = Readonly<{
     time: number,
     frog: Frog,
+    ladyFrog: Frog | null,
     cars: ReadonlyArray<Car>,
     planks: ReadonlyArray<Plank>,
-    targets: ReadonlyArray<Target>
+    targets: ReadonlyArray<Target>,
+    crocodile: Crocodile | null,
     river: River,
     carCount: number,
     plankCount: number,
@@ -115,7 +119,9 @@ function main() {
     carNum: ReadonlyArray<number>,
     plankNum: ReadonlyArray<number>,
     frogOnPlank: ReadonlyArray<Plank>,
+    ladyFrogOnPlank: ReadonlyArray<Plank>,
     hasFrogTarget: ReadonlyArray<Target>,
+    frogPicksUpLadyFrog: boolean,
     frogInTargetCount: number,
     passedLevel: boolean,
     gameOver: boolean
@@ -123,10 +129,12 @@ function main() {
 
   const initialState: State = {
     time: 0,
-    frog: createFrog(),
+    frog: createFrog(300, 580, false),
+    ladyFrog: null,
     cars: [],
     planks: [],
     targets: [],
+    crocodile: null,
     river: createRiver(),
     carCount: 0,
     plankCount: 0,
@@ -136,9 +144,11 @@ function main() {
     multiplier: 1.05,
     carSpeed: [1, 1, 1.3, 1, 1, 1],
     carNum: [2, 2, 1, 3, 3, 2],
-    plankNum: [3, 3, 0, 2, 3, 0],
+    plankNum: [2, 3, 4, 2, 3, 3],
     frogOnPlank: [],
+    ladyFrogOnPlank: [],
     hasFrogTarget: [],
+    frogPicksUpLadyFrog: false,
     frogInTargetCount: 0,
     passedLevel: false,
     gameOver: false
@@ -148,19 +158,23 @@ function main() {
     if (s.gameOver) {
       return {...s,
         time: 0,
-        frog: createFrog(),
+        frog: createFrog(300, 580, false),
+        ladyFrog: null,
         cars: [],
         planks: [],
         targets: [],
+        crocodile: null,
         carCount: 0,
         plankCount: 0,
         score: 0,
         level: 1,
-        carSpeed: [1, 1, 1, 1, 1, 1],
+        carSpeed: [1, 1, 1.3, 1, 1, 1],
         carNum: [2, 2, 1, 3, 3, 2],
-        plankNum: [3, 3, 0, 2, 3, 0],
+        plankNum: [2, 3, 4, 2, 3, 3],
         frogOnPlank: [],
+        ladyFrogOnPlank: [],
         hasFrogTarget: [],
+        frogPicksUpLadyFrog: false,
         frogInTargetCount: 0,
         passedLevel: false,
         gameOver: false
@@ -168,10 +182,12 @@ function main() {
     }
     else if (s.passedLevel) {
       return {...s,
-        frog: createFrog(),
+        frog: createFrog(300, 580, false),
+        ladyFrog: null,
         cars: [],
         planks: [],
         targets: [],
+        crocodile: null,
         carCount: 0,
         plankCount: 0,
         level: s.level + 1,
@@ -179,14 +195,29 @@ function main() {
                     s.carSpeed[2]*s.multiplier, s.carSpeed[3]*s.multiplier, 
                     s.carSpeed[4]*s.multiplier, s.carSpeed[5]*s.multiplier],
         carNum: s.level === 5 ? [2+1, 2+1, 1+1, 3+1, 3+1, 2+1] : [2, 2, 1, 3, 3, 2],
-        plankNum: s.level === 5 ? [3, 3, 0, 2-1, 3, 0] : [3, 3, 0, 2, 3, 0],
+        plankNum: s.level === 5 ? [2, 3, 4-1, 2-1, 3, 3-1] : [2, 3, 4, 2, 3, 3],
         frogOnPlank: [],
+        ladyFrogOnPlank: [],
         hasFrogTarget: [],
+        frogPicksUpLadyFrog: false,
         frogInTargetCount: 0,
         passedLevel: false,
       }
     }
     return s
+  }
+
+  function createCrocodile(s: State, row_number: number, direction: number, speed: number, radiusX: number, radiusY: number): Crocodile {
+    return {
+      id: 'crocodile',
+      pos: {x: !direction ? 600 * direction : 600 * direction - (radiusX * 2), 
+            y: 10 + row_number * 40},
+      createTime: s.time,
+      radiusX: radiusX,
+      radiusY: radiusY,
+      direction: direction,
+      speed: speed
+    }
   }
 
   function createRiver(): River {
@@ -199,10 +230,10 @@ function main() {
     }
   }
 
-  function createFrog(): Frog {
+  function createFrog(x: number, y: number, isLadyFrog: boolean): Frog {
     return {
-      id: 'frog',
-      pos: {x: 300, y: 580},
+      id: isLadyFrog ? 'ladyFrog' : 'frog',
+      pos: {x: x, y: y},
       createTime: 0,
       radius: 10
     }
@@ -246,7 +277,7 @@ function main() {
     pos: {x: direction === 1 ? wrap(o.pos.x - speed, o.radius) : wrap(o.pos.x + speed, o.radius), y: o.pos.y}
   }
 
-  const movePlank = (o: Plank, direction: number, speed: number) => <Plank>{...o,
+  const movePlank = (o: Plank | Crocodile, direction: number, speed: number) => <Plank | Crocodile>{...o,
     pos: {x: direction === 1 ? wrapPlank(o.pos.x - speed, o.radiusX) : wrapPlank(o.pos.x + speed, o.radiusX), y: o.pos.y}
   }
 
@@ -254,7 +285,13 @@ function main() {
     pos: {x: direction === 1 ? o.pos.x - speed : o.pos.x + speed, y: o.pos.y}
   }
 
+  const moveLadyFrog = (o: Frog, speed: number) => <Frog>{...o,
+    pos: {x: wrapLadyFrog(o.pos.x + speed, o.radius), y: o.pos.y}
+  }
+
   const wrap = (x: number, radius: number) => x + radius < 0 ? x + 600 : x + radius > 600 ? x - 600 : x
+
+  const wrapLadyFrog = (x: number, radius: number) => x - radius > 600 ? x - 620 : x
 
   const wrapPlank = (xPlank: number, radiusPlank: number) => 
       xPlank + (radiusPlank * 2) < 0 ? xPlank + 600 + radiusPlank : xPlank > 600 ? xPlank - 600 - radiusPlank : xPlank
@@ -264,12 +301,17 @@ function main() {
       time: elapsed,
       cars: s.cars.map(e => moveCar(e, e.direction, e.speed)),
       planks: s.planks.map(e => movePlank(e, e.direction, e.speed)),
-      frog: s.frogOnPlank.length > 0 ? moveFrog(s.frog, s.frogOnPlank[0], s.frogOnPlank[0].direction, s.frogOnPlank[0].speed) : s.frog
+      frog: s.frogOnPlank.length > 0 ? moveFrog(s.frog, s.frogOnPlank[0], s.frogOnPlank[0].direction, s.frogOnPlank[0].speed) : s.frog,
+      ladyFrog: 
+        s.ladyFrog ?
+          s.ladyFrogOnPlank.length > 0 ? moveLadyFrog(s.ladyFrog!, s.ladyFrogOnPlank[0].speed): s.ladyFrog
+          : s.ladyFrog,
+      crocodile: s.crocodile ? movePlank(s.crocodile, s.crocodile.direction, s.crocodile.speed) : s.crocodile
     })
   }
 
   const handleCollisions = (s: State) => {
-    const bodiesCollided = ([frog, obj]: [Frog, Car | Target]) => {
+    const bodiesCollided = ([frog, obj]: [Frog, Car | Target | Frog]) => {
       return Math.abs(frog.pos.x - (obj.pos.x + obj.radius)) < frog.radius + obj.radius
           && Math.abs(frog.pos.y - (obj.pos.y + obj.radius)) < frog.radius + obj.radius
     }
@@ -279,17 +321,26 @@ function main() {
     }
     const frogCollideCar = s.cars.filter(r => bodiesCollided([s.frog, r])).length > 0
     const frogCollidePlank = s.planks.filter(r => bodiesCollidedPlankOrRiver([s.frog, r]))
+    const ladyFrogOnPlank = s.ladyFrog ? s.planks.filter(r => bodiesCollidedPlankOrRiver([s.ladyFrog!, r])) : []
+    const frogPicksUpLadyFrog = s.ladyFrog ? bodiesCollided([s.frog, s.ladyFrog]) : false
     const frogCollideRiver = frogCollidePlank.length > 0 ? false : bodiesCollidedPlankOrRiver([s.frog, s.river])
     const frogOutOfBounds = s.frog.pos.x - s.frog.radius > 600 || s.frog.pos.x + s.frog.radius < 0
     const hasFrogTarget = s.targets.filter(r => bodiesCollided([s.frog, r]))
 
     return <State> {
       ...s,
-      frog: hasFrogTarget.length > 0 ? createFrog(): s.frog,
-      score: hasFrogTarget.length > 0 ? s.score + 40 : s.score,
-      highscore: hasFrogTarget.length > 0 && s.score >= s.highscore ? s.highscore + 40 : s.highscore,
+      frog: hasFrogTarget.length > 0 ? createFrog(300, 580, false): s.frog,
+      score: 
+        hasFrogTarget.length > 0 && s.frogPicksUpLadyFrog ? s.score + 200 + 50 : hasFrogTarget.length > 0 && !s.frogPicksUpLadyFrog ? s.score + 50 : s.score,
+      highscore: hasFrogTarget.length > 0 && s.frogPicksUpLadyFrog && s.score >= s.highscore ?
+                  s.highscore + 200 + 50 : 
+                  hasFrogTarget.length > 0 && !s.frogPicksUpLadyFrog && s.score >= s.highscore ?
+                  s.highscore + 50 :
+                  s.highscore,
       hasFrogTarget: hasFrogTarget,
       frogOnPlank: frogCollidePlank,
+      ladyFrogOnPlank: ladyFrogOnPlank,
+      frogPicksUpLadyFrog: s.frogPicksUpLadyFrog ? hasFrogTarget.length > 0 ? false : s.frogPicksUpLadyFrog : frogPicksUpLadyFrog,
       frogInTargetCount: hasFrogTarget.length > 0 ? s.frogInTargetCount + 1 : s.frogInTargetCount,
       passedLevel: hasFrogTarget.length > 0 && s.frogInTargetCount + 1 === 5 ? true : false,
       gameOver: frogCollideCar || frogCollideRiver || frogOutOfBounds
@@ -330,10 +381,15 @@ function main() {
       e instanceof CreateTarget ? {...s,
         targets: s.targets.concat([createTarget(e.n)])
       } :
+      e instanceof CreateCrocodile ? {...s,
+        crocodile: createCrocodile(s, e.row_no, e.direction, e.speed, e.radiusX, 10)
+      } :
+      e instanceof CreateLadyFrog ? {...s,
+        ladyFrog: createFrog(40, 220, true)
+      } :
       tick(s, e.elapsed)
 
   function updateView(state: State): State {
-    console.log(state.carNum[2])
     const score = document.getElementById("score")!
     score.innerHTML = String(state.score)
     const highscore = document.getElementById("highscore")!
@@ -356,20 +412,21 @@ function main() {
       frog.setAttribute("cy", String(state.frog.pos.y))
     }
     svg.appendChild(frog)
+
     state.cars.forEach(c => {
-        const createCarView = () => {
-          const v = document.createElementNS(svg.namespaceURI, "rect");
-          v.setAttribute("id",c.id);
-          v.classList.add("car")
-          svg.appendChild(v)
-          return v;
-        }
-        const v = document.getElementById(c.id) || createCarView();
-        v.setAttribute("x", String(c.pos.x))
-        v.setAttribute("y", String(c.pos.y))
-        v.setAttribute("width", "20");
-        v.setAttribute("height", "20");
-        v.setAttribute("fill", "white");
+      const createCarView = () => {
+        const v = document.createElementNS(svg.namespaceURI, "rect");
+        v.setAttribute("id",c.id);
+        v.classList.add("car")
+        svg.appendChild(v)
+        return v;
+      }
+      const v = document.getElementById(c.id) || createCarView();
+      v.setAttribute("x", String(c.pos.x))
+      v.setAttribute("y", String(c.pos.y))
+      v.setAttribute("width", "20");
+      v.setAttribute("height", "20");
+      v.setAttribute("fill", "white");
     })
     state.planks.forEach(p => {
       const createPlankView = () => {
@@ -386,6 +443,46 @@ function main() {
       v.setAttribute("height", "20");
       v.setAttribute("fill", "brown");
     })
+    if (state.crocodile) {
+      const createCrocView = () => {
+        const croc = document.createElementNS(svg.namespaceURI, "rect")
+        croc.setAttribute("id", "croc")
+        svg.appendChild(croc)
+        return croc
+      }
+      const croc = document.getElementById("croc") || createCrocView();
+      croc.setAttribute("x", String(state.crocodile!.pos.x))
+      croc.setAttribute("y", String(state.crocodile!.pos.y))
+      croc.setAttribute("width", String(state.crocodile!.radiusX * 2));
+      croc.setAttribute("height", "20");
+      croc.setAttribute("fill", "yellow");
+    }
+
+    // if (state.frogPicksUpLadyFrog) {
+    //   svg.removeChild(document.getElementById("ladyFrog")!)
+    // }
+
+    if (state.ladyFrog) {
+      const createLadyFrogView = () => {
+        const ladyFrog = document.createElementNS(svg.namespaceURI, "circle")
+        ladyFrog.setAttribute("id", "ladyFrog")
+        svg.appendChild(ladyFrog)
+        return ladyFrog
+      }
+      if (!state.frogPicksUpLadyFrog) {
+        const ladyFrog = document.getElementById("ladyFrog") || createLadyFrogView();
+        ladyFrog.setAttribute("cx", String(state.ladyFrog!.pos.x))
+        ladyFrog.setAttribute("cy", String(state.ladyFrog!.pos.y))
+        ladyFrog.setAttribute("r", String(state.ladyFrog!.radius));
+        ladyFrog.setAttribute("fill", "pink");
+      }
+      else {
+        const ladyFrog = document.getElementById("ladyFrog");
+        if (ladyFrog) {
+          svg.removeChild(ladyFrog)
+        }
+      }
+    }
 
     function clearView() {
       state.cars.forEach(c => {
@@ -394,6 +491,9 @@ function main() {
       state.planks.forEach(p => {
         svg.removeChild(document.getElementById(p.id)!)
       })
+      if (state.crocodile) {
+        svg.removeChild(document.getElementById('croc')!)
+      }
       function frogRec(n: number) {
         if (n === 1) {
           svg.removeChild(document.getElementById(`frg${n}`)!)
@@ -474,13 +574,19 @@ function main() {
 
     const row1Plank = interval(2200).pipe(take(s.plankNum[0]), map(_ => new CreatePlank(1, 1, 1, 70, 10)))
     const row2Plank = interval(2100).pipe(take(s.plankNum[1]), map(_ => new CreatePlank(2, 0, 1, 70, 10)))
+    const row3Plank = interval(2000).pipe(take(s.plankNum[2]), map(_ => new CreatePlank(3, 1, 0.85, 40, 10)))
     const row4Plank = interval(2500).pipe(take(s.plankNum[3]), map(_ => new CreatePlank(4, 0, 1.5, 130, 10)))
-    const row5Plank = interval(2500).pipe(take(s.plankNum[4]), map(_ => new CreatePlank(5, 0, 0.85, 50, 10)))
+    const row5Plank = interval(3800).pipe(take(s.plankNum[4]), map(_ => new CreatePlank(5, 0, 0.6, 50, 10)))
+    const row6Plank = interval(2100).pipe(take(s.plankNum[5]), map(_ => new CreatePlank(6, 1, 1, 50, 10)))
+
+    const addCroc = interval(6600).pipe(take(1), map(_ => new CreateCrocodile(1, 1, 1, 70, 10)))
+
+    const addLadyFrog = interval(7700).pipe(take(1), map(_ => new CreateLadyFrog()))
 
     const merger: Observable<Action> = merge(
       gameClock, controlFrog,
       row1Car, row2Car, row3Car, row4Car, row5Car, row6Car,
-      row1Plank, row2Plank, row4Plank, row5Plank,
+      row1Plank, row2Plank, row3Plank, row4Plank, row5Plank, row6Plank, addCroc, addLadyFrog,
       target1, target2, target3, target4, target5
     )
     
