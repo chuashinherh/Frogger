@@ -486,7 +486,7 @@ function main() {
   };
 
   const handleCollisions = (s: State) => {
-    const bodiesCollided = ([frog, obj]: [Frog, Car | Target | Frog]) => {
+    const frogCollided = ([frog, obj]: [Frog, Car | Target | Frog]) => {
       return (
         Math.abs(frog.pos.x - (obj.pos.x + obj.radius)) <
           frog.radius + obj.radius &&
@@ -494,7 +494,8 @@ function main() {
           frog.radius + obj.radius
       );
     };
-    const bodiesCollidedPlankOrRiver = ([frog, obj]: [Frog, Plank | River]) => {
+
+    const frogCollidedPlankOrRiver = ([frog, obj]: [Frog, Plank | River]) => {
       return (
         Math.abs(frog.pos.x - (obj.pos.x + obj.radiusX)) <
           frog.radius + obj.radiusX &&
@@ -502,24 +503,31 @@ function main() {
           frog.radius + obj.radiusY
       );
     };
+
     const frogCollideCar =
-      s.cars.filter((r) => bodiesCollided([s.frog, r])).length > 0;
+      s.cars.filter((r) => frogCollided([s.frog, r])).length > 0;
+
     const frogCollidePlank = s.planks.filter((r) =>
-      bodiesCollidedPlankOrRiver([s.frog, r])
+      frogCollidedPlankOrRiver([s.frog, r])
     );
+
     const ladyFrogOnPlank = s.ladyFrog
-      ? s.planks.filter((r) => bodiesCollidedPlankOrRiver([s.ladyFrog!, r]))
+      ? s.planks.filter((r) => frogCollidedPlankOrRiver([s.ladyFrog!, r]))
       : [];
+
     const frogPicksUpLadyFrog = s.ladyFrog
-      ? bodiesCollided([s.frog, s.ladyFrog])
+      ? frogCollided([s.frog, s.ladyFrog])
       : false;
+
     const frogCollideRiver =
       frogCollidePlank.length > 0
         ? false
-        : bodiesCollidedPlankOrRiver([s.frog, s.river]);
+        : frogCollidedPlankOrRiver([s.frog, s.river]);
+
     const frogOutOfBounds =
       s.frog.pos.x - s.frog.radius > 600 || s.frog.pos.x + s.frog.radius < 0;
-    const hasFrogTarget = s.targets.filter((r) => bodiesCollided([s.frog, r]));
+
+    const hasFrogTarget = s.targets.filter((r) => frogCollided([s.frog, r]));
 
     return <State>{
       ...s,
@@ -870,7 +878,7 @@ function main() {
         map(updateView),
         takeWhile((s) => !s.gameOver && !s.passedLevel)
       )
-      .subscribe();
+      .subscribe(updateView);
   }
   startGame(initialState);
 }
