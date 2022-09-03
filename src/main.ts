@@ -872,13 +872,16 @@ function main() {
       target5
     );
 
-    return merger
+    const subsciption = merger
       .pipe(
-        scan(reduceState, s),
-        map(updateView),
-        takeWhile((s) => !s.gameOver && !s.passedLevel)
+        scan(reduceState, s)
       )
-      .subscribe(updateView);
+      .subscribe(s => {
+        updateView(s)
+        if (s.gameOver || s.passedLevel) {
+          subsciption.unsubscribe()
+        }
+      });
   }
   startGame(initialState);
 }
