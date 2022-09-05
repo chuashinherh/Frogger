@@ -21,7 +21,7 @@
  * implementing FRP.
  */
 import { fromEvent, interval, merge, Observable, range } from "rxjs";
-import { map, scan, take, takeWhile } from "rxjs/operators";
+import { map, scan, take } from "rxjs/operators";
 import "./style.css";
 
 /**
@@ -774,13 +774,13 @@ function main() {
 
   const controlFrog = fromEvent<KeyboardEvent>(document, "keydown").pipe(
     map(({ key }) => {
-      if (key === "w") {
+      if (key === "w" || key === "ArrowUp") {
         return new Move(0, -40, true);
-      } else if (key === "a") {
+      } else if (key === "a" || key === "ArrowLeft") {
         return new Move(-40, 0, false);
-      } else if (key === "s") {
+      } else if (key === "s" || key === "ArrowDown") {
         return new Move(0, 40, false);
-      } else if (key === "d") {
+      } else if (key === "d" || key === "ArrowRight") {
         return new Move(40, 0, false);
       }
       return new Move(0, 0, false);
