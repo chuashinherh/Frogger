@@ -1,3 +1,5 @@
+To directly run the game, go to the GitHub Pages Environment on the right.
+
 # FIT2102 Assignment 1
 
 All of your changes, code, and game files should be in the src folder.
